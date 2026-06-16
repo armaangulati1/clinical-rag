@@ -1,9 +1,9 @@
+fastapi
+uvicorn[standard]
 openai
+instructor
 python-dotenv
 requests
 psycopg[binary]
 pgvector
-ragas
-eval_type_backport
-sentence-transformers
-instructor
+streamlit

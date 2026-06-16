@@ -1,0 +1,4 @@
+-r requirements.txt
+ragas
+eval_type_backport
+sentence-transformers
