@@ -1,0 +1,5 @@
+open ai
+python-dotenv
+requests
+psycopg[binary]
+pgvector
