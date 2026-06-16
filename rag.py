@@ -2,6 +2,7 @@ import sys, requests
 from openai import OpenAI
 from dotenv import load_dotenv
 from db import init_db, add_chunks, search_chunks, add_fts, vector_search, keyword_search
+from rerank import rerank
 
 load_dotenv()
 client = OpenAI(timeout=60.0, max_retries=3)
@@ -23,11 +24,15 @@ def reciprocal_rank_fusion(result_lists, k=60):
     ranked = sorted(scores, key=scores.get, reverse=True)
     return [rows[cid] for cid in ranked]
 
-def hybrid_search(question, k=5, pool=20):
+def candidate_pool(question, pool=20):
     qvec = embed([question])[0]
-    vec = vector_search(qvec, pool)            # top 20 by meaning
-    kw  = keyword_search(question, pool)       # top 20 by keywords
-    return reciprocal_rank_fusion([vec, kw])[:k]   # merge, take best k
+    vec = vector_search(qvec, pool)
+    kw  = keyword_search(question, pool)
+    return reciprocal_rank_fusion([vec, kw])[:pool]   # wide, fused candidate set
+
+def retrieve(question, k=5, pool=20):
+    candidates = candidate_pool(question, pool)       # ~20 candidates
+    return rerank(question, candidates, top_k=k)      # cross-encoder picks the true best k
 
 def chunk_text(text, size=800, overlap=100):        # NAIVE chunking: fixed-size with overlap
     chunks, start = [], 0
@@ -62,7 +67,7 @@ def ingest(drugs):
     print(f"Ingested {len(rows)} chunks from {len(drugs)} drugs.")
 
 def answer_with_contexts(question, k=5):
-    hits = hybrid_search(question, k)
+    hits = retrieve(question, k)
     contexts = [f"[{d} — {s}] {c}" for _id, d, s, c in hits]
     context = "\n\n".join(contexts)
     resp = client.chat.completions.create(
