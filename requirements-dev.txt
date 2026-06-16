@@ -2,3 +2,4 @@
 ragas
 eval_type_backport
 sentence-transformers
+pytest

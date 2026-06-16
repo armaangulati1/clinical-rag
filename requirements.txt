@@ -2,8 +2,10 @@ fastapi
 uvicorn[standard]
 openai
 instructor
+eval_type_backport
 python-dotenv
 requests
 psycopg[binary]
 pgvector
 streamlit
+langfuse

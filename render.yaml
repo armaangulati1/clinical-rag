@@ -14,3 +14,9 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_HOST
+        value: https://us.cloud.langfuse.com

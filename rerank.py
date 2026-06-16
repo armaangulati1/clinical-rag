@@ -1,6 +1,6 @@
 import os
 import instructor
-from openai import OpenAI
+from langfuse.openai import OpenAI
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 

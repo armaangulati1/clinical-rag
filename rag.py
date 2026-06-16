@@ -1,6 +1,7 @@
 import sys, requests
 import instructor
-from openai import OpenAI
+from langfuse.openai import OpenAI
+from langfuse import observe, get_client
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from db import init_db, add_chunks, search_chunks, add_fts, vector_search, keyword_search
@@ -33,6 +34,7 @@ def candidate_pool(question, pool=20):
     kw  = keyword_search(question, pool)
     return reciprocal_rank_fusion([vec, kw])[:pool]   # wide, fused candidate set
 
+@observe()
 def retrieve(question, k=5, pool=20):
     candidates = candidate_pool(question, pool)       # ~20 candidates
     return rerank(question, candidates, top_k=k)      # cross-encoder picks the true best k
@@ -106,6 +108,7 @@ def answer_with_contexts(question, k=5):      # used by your RAGAS/simple eval �
     ans, contexts, _ = _answer_core(question, k)
     return ans, contexts
 
+@observe()
 def answer_cited(question, k=5):              # used by the app/CLI — returns real citations
     ans, _, cites = _answer_core(question, k)
     return ans, cites
@@ -123,5 +126,6 @@ if __name__ == "__main__":
         print(ans, "\n\nSources:")
         for c in cites:
             print(f"  [{c['n']}] {c['drug']} — {c['section']}  →  {c['source']}")
+        get_client().flush()
     else:
         print('Usage: python rag.py ingest   |   python rag.py ask "your question"')
