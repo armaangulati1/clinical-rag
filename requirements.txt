@@ -6,3 +6,4 @@ pgvector
 ragas
 eval_type_backport
 sentence-transformers
+instructor

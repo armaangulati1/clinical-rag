@@ -1,11 +1,14 @@
 import sys, requests
+import instructor
 from openai import OpenAI
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from db import init_db, add_chunks, search_chunks, add_fts, vector_search, keyword_search
 from rerank import rerank
 
 load_dotenv()
 client = OpenAI(timeout=60.0, max_retries=3)
+client_inst = instructor.from_openai(client)
 EMBED_MODEL, CHAT_MODEL = "text-embedding-3-small", "gpt-4o-mini"
 SECTIONS = ["indications_and_usage", "dosage_and_administration", "adverse_reactions",
             "warnings", "contraindications", "drug_interactions"]
@@ -66,23 +69,49 @@ def ingest(drugs):
     add_chunks(rows)
     print(f"Ingested {len(rows)} chunks from {len(drugs)} drugs.")
 
-def answer_with_contexts(question, k=5):
-    hits = retrieve(question, k)
-    contexts = [f"[{d} — {s}] {c}" for _id, d, s, c in hits]
-    context = "\n\n".join(contexts)
-    resp = client.chat.completions.create(
+class AnswerWithCitations(BaseModel):
+    answer: str = Field(description="answer grounded ONLY in the provided sources")
+    citations: list[int] = Field(default_factory=list,
+                                 description="the source numbers [n] actually used to answer")
+
+def _answer_core(question, k=5):
+    hits = retrieve(question, k)                              # (id, drug, section, content) x k
+    context = "\n\n".join(
+        f"[{n}] ({d} — {s}) {c}" for n, (_id, d, s, c) in enumerate(hits, start=1))
+
+    result = client_inst.chat.completions.create(
         model=CHAT_MODEL,
+        response_model=AnswerWithCitations,
         messages=[
             {"role": "system", "content":
-                "Answer using ONLY the context provided. If the answer isn't in the context, "
-                "say you don't know. Cite the [drug — section] tags you used."},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"},
+                "Answer using ONLY the numbered sources below. In 'citations', list the source "
+                "numbers you actually used. If the answer isn't in the sources, set answer to a "
+                "brief 'I don't know based on the available sources' and citations to []."},
+            {"role": "user", "content": f"Sources:\n{context}\n\nQuestion: {question}"},
         ],
     )
-    return resp.choices[0].message.content, contexts
+
+    cites = []
+    for n in result.citations:
+        if 1 <= n <= len(hits):
+            _id, d, s, c = hits[n - 1]
+            cites.append({
+                "n": n, "drug": d, "section": s, "snippet": c[:200],
+                "source": f"https://dailymed.nlm.nih.gov/dailymed/search.cfm?query={d}",
+            })
+    contexts = [f"[{d} — {s}] {c}" for _id, d, s, c in hits]   # for the eval harness
+    return result.answer, contexts, cites
+
+def answer_with_contexts(question, k=5):      # used by your RAGAS/simple eval — unchanged signature
+    ans, contexts, _ = _answer_core(question, k)
+    return ans, contexts
+
+def answer_cited(question, k=5):              # used by the app/CLI — returns real citations
+    ans, _, cites = _answer_core(question, k)
+    return ans, cites
 
 def answer(question, k=5):
-    text, _ = answer_with_contexts(question, k)
+    text, _ = answer_cited(question, k)
     return text
 
 if __name__ == "__main__":
@@ -90,6 +119,9 @@ if __name__ == "__main__":
         init_db()
         ingest(["metoprolol", "lisinopril", "metformin", "atorvastatin", "warfarin"])
     elif len(sys.argv) >= 3 and sys.argv[1] == "ask":
-        print(answer(" ".join(sys.argv[2:])))
+        ans, cites = answer_cited(" ".join(sys.argv[2:]))
+        print(ans, "\n\nSources:")
+        for c in cites:
+            print(f"  [{c['n']}] {c['drug']} — {c['section']}  →  {c['source']}")
     else:
         print('Usage: python rag.py ingest   |   python rag.py ask "your question"')
