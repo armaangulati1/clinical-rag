@@ -68,3 +68,19 @@ if __name__ == "__main__":
         print(answer(" ".join(sys.argv[2:])))
     else:
         print('Usage: python rag.py ingest   |   python rag.py ask "your question"')
+
+def answer_with_contexts(question, k=5):
+    qvec = embed([question])[0]
+    hits = search_chunks(qvec, k)
+    contexts = [f"[{d} — {s}] {c}" for d, s, c in hits]
+    context = "\n\n".join(contexts)
+    resp = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=[
+            {"role": "system", "content":
+                "Answer using ONLY the context provided. If the answer isn't in the context, "
+                "say you don't know. Cite the [drug — section] tags you used."},
+            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"},
+        ],
+    )
+    return resp.choices[0].message.content, contexts   # <- now returns BOTH

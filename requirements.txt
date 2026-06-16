@@ -1,5 +1,7 @@
-open ai
+openai
 python-dotenv
 requests
 psycopg[binary]
 pgvector
+ragas
+eval_type_backport
